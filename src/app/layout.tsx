@@ -48,6 +48,19 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="icon" href="/images/logo.png" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for (let registration of registrations) {
+                    registration.unregister();
+                  }
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body className="flex flex-col min-h-screen bg-[#FBF9F5] text-[#0E1A2B] antialiased selection:bg-[#C59B27] selection:text-white">
         <LanguageProvider>
