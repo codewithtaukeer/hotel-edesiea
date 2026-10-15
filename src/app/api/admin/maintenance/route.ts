@@ -6,6 +6,17 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "");
+    const session = token ? verifySessionToken(token) : null;
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Unauthorized: Staff login required" },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const priority = searchParams.get("priority");
