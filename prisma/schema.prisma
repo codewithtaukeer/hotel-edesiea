@@ -1,0 +1,403 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// 1. HOTEL BUSINESS CONFIGURATION
+// -------------------------------------------------------------
+model HotelSettings {
+  id                     String   @id @default("edesiea_settings")
+  hotelName              String   @default("Hotel Edesiea")
+  legalName              String   @default("Hotel Edesiea & Edelisa Authenticity Restaurant")
+  tagline                String   @default("Authentic Flavors · Timeless Hospitality")
+  taglineMr              String   @default("अस्सल चव · अविस्मरणीय आतिथ्य")
+  address                String   @default("Shree Ballaleshwar Devshthan Temple Road, Pali, Maharashtra 410205, India")
+  pinCode                String   @default("410205")
+  landmark               String   @default("Near Shree Ballaleshwar Ganpati Temple (Ashtavinayak)")
+  phone                  String   @default("+91 8855887673")
+  whatsapp               String   @default("918855887673")
+  emailPrimary           String   @default("edesieaoffice@gmail.com")
+  emailSecondary         String   @default("taukeerakbar.code@mail.com")
+  mapsUrl                String   @default("https://maps.app.goo.gl/ZKSFVCUsSZ62sFuu8")
+  currency               String   @default("INR")
+  currencySymbol         String   @default("₹")
+  timezone               String   @default("Asia/Kolkata")
+  checkInTime            String   @default("12:00 PM")
+  checkOutTime           String   @default("11:00 AM")
+  advanceDepositAmount   Float    @default(500.0)
+  cancellationHoursLimit Int      @default(48) // 2 days prior
+  restaurantGstRate      Float    @default(5.0) // 2.5% CGST + 2.5% SGST
+  roomGstRate            Float    @default(12.0)
+  gstin                  String   @default("") // Editable by owner
+  isBookingOpen          Boolean  @default(true)
+  updatedAt              DateTime @updatedAt
+}
+
+// -------------------------------------------------------------
+// 2. USER & ROLE-BASED ACCESS CONTROL (8 ROLES)
+// -------------------------------------------------------------
+model User {
+  id           String      @id @default(uuid())
+  name         String
+  email        String      @unique
+  phone        String?
+  passwordHash String
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  roles        UserRole[]
+  auditLogs    AuditLog[]
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  role      String   // SUPER_ADMIN, HOTEL_MANAGER, RECEPTIONIST, HOUSEKEEPING, RESTAURANT_MANAGER, KITCHEN, ACCOUNTANT, MAINTENANCE
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+}
+
+// -------------------------------------------------------------
+// 3. ROOM INVENTORY, PRICING & HOUSEKEEPING SEPARATION
+// -------------------------------------------------------------
+model RoomCategory {
+  id             String          @id // "deluxe", "honeymoon", "super-deluxe", "suite"
+  name           String
+  nameMr         String
+  tagline        String
+  basePrice      Float
+  totalRooms     Int             @default(3)
+  maxAdults      Int             @default(3)
+  maxChildren    Int             @default(1)
+  bedType        String
+  sizeSqFt       Int
+  description    String
+  descriptionMr  String
+  amenitiesJson  String          // Stored as JSON string of amenities array
+  imageUrl       String          @default("/images/room-real.png")
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  physicalRooms  PhysicalRoom[]
+  ratePlans      RatePlan[]
+  bookingRooms   BookingRoom[]
+  inventoryHolds InventoryHold[]
+}
+
+model PhysicalRoom {
+  id                  String               @id // e.g. "101", "102", "103"
+  roomNumber          String               @unique
+  floor               Int                  // 1, 2, 3, 4
+  categoryId          String
+  operationalStatus   String               @default("AVAILABLE") // AVAILABLE, OUT_OF_SERVICE, MAINTENANCE_BLOCKED
+  housekeepingStatus  String               @default("CLEAN")     // CLEAN, DIRTY, INSPECTING, MAINTENANCE
+  notes               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  category            RoomCategory         @relation(fields: [categoryId], references: [id])
+  bookingRooms        BookingRoom[]
+  housekeepingTasks   HousekeepingTask[]
+  maintenanceTickets  MaintenanceTicket[]
+  inventoryHolds      InventoryHold[]
+}
+
+model RatePlan {
+  id             String       @id @default(uuid())
+  categoryId     String
+  name           String       // Standard, Weekend Special, Temple Festival
+  pricePerNight  Float
+  isWeekendOnly  Boolean      @default(false)
+  startDate      DateTime?
+  endDate        DateTime?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  category       RoomCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 4. GUESTS & CONCURRENCY-SAFE RESERVATIONS
+// -------------------------------------------------------------
+model Guest {
+  id         String     @id @default(uuid())
+  fullName   String
+  phone      String     @unique
+  email      String?
+  idType     String?    // Aadhaar, Passport, Voter ID
+  idNumber   String?
+  address    String?
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  bookings   Booking[]
+  invoices   Invoice[]
+}
+
+model Booking {
+  id               String            @id @default(uuid())
+  bookingRef       String            @unique // EDE-XXXXXX (non-sequential public reference)
+  guestId          String
+  status           String            @default("CONFIRMED") // PENDING_HOLD, CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED, NO_SHOW
+  checkInDate      String            // YYYY-MM-DD
+  checkOutDate     String            // YYYY-MM-DD
+  totalNights      Int
+  adults           Int               @default(2)
+  children         Int               @default(0)
+  baseRoomCharge   Float
+  taxAmount        Float
+  totalAmount      Float
+  advancePaid      Float             @default(0.0)
+  balanceDue       Float
+  paymentStatus    String            @default("PENDING") // PENDING, PARTIAL_ADVANCE, PAID_IN_FULL, REFUNDED
+  paymentMethod    String            @default("ADVANCE_GATEWAY") // ADVANCE_GATEWAY, PAY_AT_HOTEL, CASH, UPI, CARD
+  specialRequests  String?
+  holdExpiresAt    DateTime?
+  cancellationDate DateTime?
+  cancellationNote String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  guest            Guest             @relation(fields: [guestId], references: [id])
+  bookingRooms     BookingRoom[]
+  payments         Payment[]
+  refunds          Refund[]
+  invoices         Invoice[]
+  folioEntries     FolioEntry[]
+  restaurantOrders RestaurantOrder[]
+}
+
+model BookingRoom {
+  id           String       @id @default(uuid())
+  bookingId    String
+  categoryId   String
+  roomId       String?      // Physical room assignment (can be assigned by front desk)
+  agreedRate   Float
+  checkInDate  String
+  checkOutDate String
+  booking      Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  category     RoomCategory @relation(fields: [categoryId], references: [id])
+  room         PhysicalRoom? @relation(fields: [roomId], references: [id])
+}
+
+model InventoryHold {
+  id           String        @id @default(uuid())
+  holdToken    String        @unique
+  categoryId   String
+  roomId       String?
+  checkInDate  String
+  checkOutDate String
+  expiresAt    DateTime
+  status       String        @default("ACTIVE") // ACTIVE, CONVERTED, EXPIRED, RELEASED
+  createdAt    DateTime      @default(now())
+  category     RoomCategory  @relation(fields: [categoryId], references: [id])
+  room         PhysicalRoom? @relation(fields: [roomId], references: [id])
+}
+
+// -------------------------------------------------------------
+// 5. PAYMENTS, BILLING & REFUNDS
+// -------------------------------------------------------------
+model Payment {
+  id               String    @id @default(uuid())
+  bookingId        String
+  amount           Float
+  currency         String    @default("INR")
+  status           String    @default("SUCCESS") // SUCCESS, FAILED, PENDING, REFUNDED
+  method           String    // RAZORPAY, UPI, CASH, CARD, PAY_AT_HOTEL
+  gatewayOrderId   String?
+  gatewayPaymentId String?   @unique
+  gatewaySignature String?
+  isReconciled     Boolean   @default(false)
+  notes            String?
+  createdAt        DateTime  @default(now())
+  booking          Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  refunds          Refund[]
+}
+
+model Refund {
+  id              String   @id @default(uuid())
+  paymentId       String?
+  bookingId       String
+  amount          Float
+  status          String   @default("COMPLETED") // PENDING, COMPLETED, REJECTED
+  reason          String
+  gatewayRefundId String?
+  processedBy     String?
+  createdAt       DateTime @default(now())
+  payment         Payment? @relation(fields: [paymentId], references: [id])
+  booking         Booking  @relation(fields: [bookingId], references: [id])
+}
+
+model Invoice {
+  id            String    @id @default(uuid())
+  invoiceNumber String    @unique // EAR-INV-XXXX
+  bookingId     String
+  guestId       String
+  subTotal      Float
+  taxAmount     Float
+  grandTotal    Float
+  balancePaid   Float
+  status        String    @default("SETTLED") // DRAFT, ISSUED, SETTLED, VOID
+  issuedAt      DateTime  @default(now())
+  booking       Booking   @relation(fields: [bookingId], references: [id])
+  guest         Guest     @relation(fields: [guestId], references: [id])
+}
+
+model FolioEntry {
+  id          String   @id @default(uuid())
+  bookingId   String
+  description String
+  category    String   // ROOM, RESTAURANT, EXTRA_GUEST, LAUNDRY, ADJUSTMENT
+  amount      Float
+  createdBy   String
+  createdAt   DateTime @default(now())
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id            String   @id @default(uuid())
+  category      String   // SUPPLIES, KITCHEN_GROCERY, UTILITIES, MAINTENANCE, LINEN, STAFF
+  payee         String
+  amount        Float
+  paymentMethod String   // UPI, BANK_TRANSFER, CASH
+  invoiceRef    String?
+  approvedBy    String
+  description   String
+  date          String   // YYYY-MM-DD
+  createdAt     DateTime @default(now())
+}
+
+// -------------------------------------------------------------
+// 6. RESTAURANT, MENU, TABLES & KOT ORDERS
+// -------------------------------------------------------------
+model RestaurantCategory {
+  id           String     @id // e.g. "south-indian", "thali", "curries"
+  name         String
+  displayOrder Int        @default(0)
+  isActive     Boolean    @default(true)
+  menuItems    MenuItem[]
+}
+
+model MenuItem {
+  id              String             @id
+  categoryId      String
+  name            String
+  price           Float
+  isJainAvailable Boolean            @default(false)
+  isChefSpecial   Boolean            @default(false)
+  isAvailable     Boolean            @default(true)
+  description     String?
+  displayOrder    Int                @default(0)
+  category        RestaurantCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
+}
+
+model DiningTable {
+  id           String             @id // "T-1", "T-2", "T-3"...
+  tableNumber  String             @unique
+  floor        String             @default("ROOFTOP_4TH") // GROUND, ROOFTOP_4TH, ROOFTOP_5TH
+  capacity     Int                @default(4)
+  status       String             @default("AVAILABLE") // AVAILABLE, OCCUPIED, RESERVED
+  reservations TableReservation[]
+  orders       RestaurantOrder[]
+}
+
+model TableReservation {
+  id                 String       @id @default(uuid())
+  tableId            String?
+  guestName          String
+  phone              String
+  reservationDate    String       // YYYY-MM-DD
+  timeSlot           String       // 13:00, 20:00
+  partySize          Int
+  floorPreference    String       @default("ROOFTOP_4TH")
+  dietaryRequirement String       @default("Pure Veg")
+  status             String       @default("CONFIRMED") // CONFIRMED, SEATED, CANCELLED, COMPLETED
+  notes              String?
+  createdAt          DateTime     @default(now())
+  table              DiningTable? @relation(fields: [tableId], references: [id])
+}
+
+model RestaurantOrder {
+  id          String      @id @default(uuid())
+  tableId     String?
+  bookingId   String?     // For room service billing to room folio
+  orderNumber String      @unique // EAR_649 format
+  orderType   String      @default("DINE_IN") // DINE_IN, ROOM_SERVICE, TAKEAWAY
+  status      String      @default("PENDING") // PENDING, KITCHEN_PREPARING, READY, SERVED, PAID, CANCELLED
+  subTotal    Float
+  cgst        Float       // 2.5%
+  sgst        Float       // 2.5%
+  grandTotal  Float
+  stewardName String?     @default("Steward")
+  createdAt   DateTime    @default(now())
+  table       DiningTable? @relation(fields: [tableId], references: [id])
+  booking     Booking?     @relation(fields: [bookingId], references: [id])
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id                  String          @id @default(uuid())
+  orderId             String
+  menuItemId          String
+  itemName            String
+  unitPrice           Float
+  quantity            Int
+  specialInstructions String?
+  totalPrice          Float
+  order               RestaurantOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem            MenuItem        @relation(fields: [menuItemId], references: [id])
+}
+
+// -------------------------------------------------------------
+// 7. HOUSEKEEPING, MAINTENANCE & TASKS
+// -------------------------------------------------------------
+model HousekeepingTask {
+  id               String       @id @default(uuid())
+  roomId           String
+  assignedTo       String?
+  status           String       @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, INSPECTED
+  taskType         String       @default("DEPARTURE_CLEAN") // DEPARTURE_CLEAN, DAILY_REFRESH, DEEP_CLEAN
+  checklistPassed  Boolean      @default(false)
+  notes            String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  room             PhysicalRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model MaintenanceTicket {
+  id           String       @id @default(uuid())
+  ticketNumber String       @unique // TKT-XXXX
+  roomId       String?
+  title        String
+  description  String
+  priority     String       @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status       String       @default("OPEN") // OPEN, ASSIGNED, IN_PROGRESS, RESOLVED
+  blocksRoom   Boolean      @default(false)
+  assignedTo   String?
+  cost         Float?
+  resolvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  room         PhysicalRoom? @relation(fields: [roomId], references: [id])
+}
+
+// -------------------------------------------------------------
+// 8. AUDIT LOGS FOR COMPLETE FINANCIAL & ACCESS AUDITING
+// -------------------------------------------------------------
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  actorRole   String?
+  action      String   // ROOM_ASSIGN, PRICE_OVERRIDE, REFUND_ISSUED, MENU_PRICE_CHANGED, CHECK_IN, CHECK_OUT
+  entity      String   // Booking, PhysicalRoom, Payment, MenuItem, User
+  entityId    String
+  detailsJson String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [actorId], references: [id])
+}
