@@ -28,11 +28,46 @@ export default function DiningReservationPage() {
   );
   const [dietary, setDietary] = useState("Regular Pure Veg");
   const [specialNote, setSpecialNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [confirmedReservation, setConfirmedReservation] = useState<any>(null);
 
-  const handleBooking = (e: React.FormEvent) => {
+  const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setErrorMsg("");
+    setSubmitting(true);
+
+    try {
+      const res = await fetch("/api/dining/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guestName,
+          phone: guestPhone,
+          reservationDate: diningDate,
+          timeSlot: diningTime,
+          partySize: parseInt(partySize, 10) || 4,
+          floorPreference,
+          dietaryRequirement: dietary,
+          notes: specialNote,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || "Failed to confirm table reservation. Please reach us on WhatsApp.");
+        setSubmitting(false);
+        return;
+      }
+
+      setConfirmedReservation(data.reservation);
+      setSubmitted(true);
+    } catch (err) {
+      setErrorMsg("Network error. Please connect directly via WhatsApp.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const whatsappMessage = encodeURIComponent(
@@ -222,6 +257,12 @@ export default function DiningReservationPage() {
                 </div>
               </div>
 
+              {errorMsg && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                  {errorMsg}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   Special Notes / Occasion (Optional)
@@ -248,9 +289,10 @@ export default function DiningReservationPage() {
 
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-8 py-3 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow-md transition-all active:scale-95"
+                  disabled={submitting}
+                  className="w-full sm:w-auto px-8 py-3 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow-md transition-all active:scale-95 disabled:opacity-60"
                 >
-                  Confirm Table Request
+                  {submitting ? "Confirming Table..." : "Confirm Table Request"}
                 </button>
               </div>
             </form>

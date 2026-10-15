@@ -54,6 +54,7 @@ function BookingContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [bookingRef, setBookingRef] = useState("");
+  const [bookingError, setBookingError] = useState("");
 
   const currentCategory: RoomCategory =
     ROOM_CATEGORIES.find((c) => c.id === selectedCategoryId) ||
@@ -76,24 +77,48 @@ function BookingContent() {
   const advancePayable = HOTEL_INFO.advanceRequired;
   const remainingDue = totalPayable - advancePayable;
 
-  const handleBookingSubmit = (e: React.FormEvent) => {
+  const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreePolicy) {
       alert("Please agree to the cancellation and check-in policies.");
       return;
     }
 
+    setBookingError("");
     setIsSubmitting(true);
 
-    // Simulate atomic confirmation & reference generation
-    setTimeout(() => {
-      const generatedRef =
-        "EDE-" +
-        Math.floor(100000 + Math.random() * 900000).toString();
-      setBookingRef(generatedRef);
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guestName,
+          guestPhone,
+          guestEmail,
+          categoryId: selectedCategoryId,
+          checkInDate: checkIn,
+          checkOutDate: checkOut,
+          adults,
+          children: 0,
+          paymentMethod: paymentMode === "advance" ? "ADVANCE_GATEWAY" : "PAY_AT_HOTEL",
+          specialRequests,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setBookingError(data.error || "Failed to secure booking. Please check dates or contact reception.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      setBookingRef(data.bookingRef);
       setBookingConfirmed(true);
+    } catch (err: any) {
+      setBookingError("Network error. Please reach our reception manager directly on WhatsApp.");
+    } finally {
       setIsSubmitting(false);
-    }, 800);
+    }
   };
 
   const whatsappConfirmationText = encodeURIComponent(
@@ -417,6 +442,13 @@ function BookingContent() {
                     </span>
                   </label>
                 </div>
+
+                {bookingError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{bookingError}</span>
+                  </div>
+                )}
 
                 <button
                   type="submit"

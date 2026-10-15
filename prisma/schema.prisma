@@ -401,3 +401,32 @@ model AuditLog {
   createdAt   DateTime @default(now())
   user        User?    @relation(fields: [actorId], references: [id])
 }
+
+// -------------------------------------------------------------
+// 9. PUBLIC ENQUIRIES, COMPLAINTS & CUSTOMER FEEDBACK
+// -------------------------------------------------------------
+model ContactEnquiry {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String
+  email       String?
+  category    String   @default("GENERAL") // GENERAL, ROOM_BOOKING, RESTAURANT_EVENT, TEMPLE_VISIT, COMPLAINT
+  message     String
+  status      String   @default("NEW") // NEW, IN_PROGRESS, RESOLVED, ARCHIVED
+  adminNotes  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CustomerFeedback {
+  id                  String   @id @default(uuid())
+  guestName           String
+  phone               String?
+  bookingRef          String?
+  rating              Int      @default(5) // 1 to 5 stars
+  serviceCategory     String   @default("OVERALL") // ROOM_STAY, RESTAURANT_FOOD, CLEANLINESS, STAFF_SERVICE, OVERALL
+  comments            String
+  isApprovedForPublic Boolean  @default(false)
+  createdAt           DateTime @default(now())
+}
+

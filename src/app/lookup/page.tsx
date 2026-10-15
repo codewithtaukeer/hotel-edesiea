@@ -12,36 +12,88 @@ import {
   Clock,
   ShieldAlert,
   ArrowLeft,
+  AlertCircle,
+  RefreshCw,
+  XCircle,
 } from "lucide-react";
 
 export default function BookingLookupPage() {
   const [bookingRef, setBookingRef] = useState("");
   const [phone, setPhone] = useState("");
-  const [searched, setSearched] = useState(false);
-  const [mockResult, setMockResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [result, setResult] = useState<any>(null);
 
-  const handleLookup = (e: React.FormEvent) => {
+  // Cancellation state
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelSuccessMsg, setCancelSuccessMsg] = useState("");
+
+  const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSearched(true);
+    setErrorMsg("");
+    setCancelSuccessMsg("");
+    setLoading(true);
 
-    // Provide immediate verified demo lookup for testing
-    if (bookingRef.trim()) {
-      setMockResult({
-        reference: bookingRef.toUpperCase().trim(),
-        guestName: "Pilgrim Guest",
-        phone: phone || "+91 8855887673",
-        roomCategory: "Super Deluxe Room",
-        roomAssigned: "Room 302",
-        checkIn: "2026-10-18 (12:00 PM)",
-        checkOut: "2026-10-19 (11:00 AM)",
-        bookingStatus: "Confirmed",
-        paymentStatus: "Advance Paid (₹500)",
-        totalAmount: 4480,
-        advancePaid: 500,
-        balanceDue: 3980,
+    try {
+      const cleanRef = bookingRef.trim().toUpperCase();
+      const res = await fetch(
+        `/api/bookings/lookup?ref=${encodeURIComponent(cleanRef)}&phone=${encodeURIComponent(phone.trim())}`
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || "No matching reservation found.");
+        setResult(null);
+        setLoading(false);
+        return;
+      }
+
+      setResult(data.booking);
+    } catch (err: any) {
+      setErrorMsg("Network error connecting to booking lookup system.");
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelBooking = async () => {
+    if (!result) return;
+    const confirmCancel = window.confirm(
+      `Are you sure you want to cancel booking ${result.reference}?`
+    );
+    if (!confirmCancel) return;
+
+    setCancelling(true);
+    try {
+      const res = await fetch("/api/bookings/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingRef: result.reference,
+          phone: result.phone,
+          reason: "Online guest cancellation request",
+        }),
       });
-    } else {
-      setMockResult(null);
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to cancel booking");
+        setCancelling(false);
+        return;
+      }
+
+      setCancelSuccessMsg(data.message);
+      // Update local state
+      setResult((prev: any) => ({
+        ...prev,
+        bookingStatus: "CANCELLED",
+      }));
+    } catch (err) {
+      alert("Error processing cancellation request. Please contact reception.");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -60,11 +112,11 @@ export default function BookingLookupPage() {
             Check Your Booking Status
           </h1>
           <p className="mt-2 text-slate-600 text-sm">
-            Enter your 8-character Booking Reference (e.g. EDE-123456) and registered phone number.
+            Enter your Booking Reference (e.g. EDE-123456) and your registered phone number.
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-md">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-md space-y-6">
           <form onSubmit={handleLookup} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -77,7 +129,7 @@ export default function BookingLookupPage() {
                   placeholder="e.g. EDE-458921"
                   value={bookingRef}
                   onChange={(e) => setBookingRef(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm font-semibold uppercase focus:ring-2 focus:ring-[#C59B27]"
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm font-semibold uppercase focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
                 />
               </div>
 
@@ -91,37 +143,67 @@ export default function BookingLookupPage() {
                   placeholder="+91 88558 87673"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27]"
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
                 />
               </div>
             </div>
 
+            {errorMsg && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 py-3 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow transition-all active:scale-95"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow transition-all active:scale-95 disabled:opacity-60"
             >
-              <Search className="w-4 h-4 text-[#C59B27]" />
-              <span>Search Reservation</span>
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-[#E5C158]" />
+                  <span>Searching Reservation...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4 text-[#C59B27]" />
+                  <span>Search Reservation</span>
+                </>
+              )}
             </button>
           </form>
 
-          {searched && mockResult && (
-            <div className="mt-8 pt-6 border-t border-slate-200 space-y-6 animate-in fade-in duration-300">
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
+          {cancelSuccessMsg && (
+            <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-800 space-y-1">
+              <p className="font-bold">Cancellation Confirmed:</p>
+              <p>{cancelSuccessMsg}</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="pt-6 border-t border-slate-200 space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 p-4 rounded-xl">
                 <div>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     Booking Reference
                   </span>
                   <p className="font-serif text-xl font-bold text-slate-900">
-                    {mockResult.reference}
+                    {result.reference}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <span className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded-full">
-                    ✓ {mockResult.bookingStatus}
+                <div className="flex flex-wrap gap-2">
+                  <span
+                    className={`px-3 py-1 text-xs font-bold rounded-full ${
+                      result.bookingStatus === "CANCELLED"
+                        ? "bg-red-100 text-red-700 border border-red-300"
+                        : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                    }`}
+                  >
+                    ✓ {result.bookingStatus}
                   </span>
                   <span className="px-3 py-1 bg-[#0E1A2B] text-[#E5C158] text-xs font-bold rounded-full">
-                    {mockResult.paymentStatus}
+                    {result.paymentStatus}
                   </span>
                 </div>
               </div>
@@ -130,20 +212,20 @@ export default function BookingLookupPage() {
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <span className="text-slate-400 block mb-0.5">Room & Assigned Unit</span>
                   <p className="font-bold text-slate-900 text-sm">
-                    {mockResult.roomCategory} ({mockResult.roomAssigned})
+                    {result.roomCategory} ({result.roomAssigned})
                   </p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <span className="text-slate-400 block mb-0.5">Primary Guest</span>
-                  <p className="font-bold text-slate-900 text-sm">{mockResult.guestName}</p>
+                  <p className="font-bold text-slate-900 text-sm">{result.guestName}</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <span className="text-slate-400 block mb-0.5">Check-in</span>
-                  <p className="font-bold text-slate-900 text-sm">{mockResult.checkIn}</p>
+                  <p className="font-bold text-slate-900 text-sm">{result.checkInDate} (12:00 PM)</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <span className="text-slate-400 block mb-0.5">Check-out</span>
-                  <p className="font-bold text-slate-900 text-sm">{mockResult.checkOut}</p>
+                  <p className="font-bold text-slate-900 text-sm">{result.checkOutDate} (11:00 AM)</p>
                 </div>
               </div>
 
@@ -151,22 +233,59 @@ export default function BookingLookupPage() {
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span>Total Amount (with GST):</span>
-                  <span className="font-bold text-slate-900">₹{mockResult.totalAmount}</span>
+                  <span className="font-bold text-slate-900">₹{result.totalAmount.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>Advance Deposited:</span>
-                  <span>- ₹{mockResult.advancePaid}</span>
+                  <span>- ₹{result.advancePaid.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold text-[#0E1A2B] border-t pt-2">
                   <span>Remaining Balance Due at Front Desk:</span>
-                  <span>₹{mockResult.balanceDue}</span>
+                  <span>₹{result.balanceDue.toLocaleString()}</span>
                 </div>
               </div>
+
+              {/* 48-Hour Cancellation Action Bar */}
+              {result.bookingStatus !== "CANCELLED" && (
+                <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3 text-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Cancellation & Policy Window</h4>
+                      <p className="text-slate-500 text-[11px] mt-0.5">
+                        {result.isEligibleForRefund
+                          ? `Eligible for full ₹${result.advancePaid} refund (${result.hoursRemaining} hours until check-in).`
+                          : `Less than 48 hours to check-in. Per hotel terms, online refund is not automated.`}
+                      </p>
+                    </div>
+
+                    {result.isEligibleForRefund ? (
+                      <button
+                        onClick={handleCancelBooking}
+                        disabled={cancelling}
+                        className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        <span>{cancelling ? "Cancelling..." : "Cancel Reservation"}</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={`https://wa.me/${HOTEL_INFO.whatsapp}?text=Namaskar%20Hotel%20Edesiea%2C%20inquiring%20about%20cancellation%20for%20Booking%20Ref%3A%20${result.reference}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 shadow"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>Chat on WhatsApp</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Actions & WhatsApp Support */}
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <a
-                  href={`https://wa.me/${HOTEL_INFO.whatsapp}?text=Namaskar%20Hotel%20Edesiea%2C%20inquiring%20about%20Booking%20Ref%3A%20${mockResult.reference}`}
+                  href={`https://wa.me/${HOTEL_INFO.whatsapp}?text=Namaskar%20Hotel%20Edesiea%2C%20inquiring%20about%20Booking%20Ref%3A%20${result.reference}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 shadow"

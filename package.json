@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test tests/phase1-public-logic.test.mjs tests/phase2-database-and-rbac.test.mjs tests/phase3-inventory-and-reservations.test.mjs tests/phase4-payments-and-finance.test.mjs tests/phase5-restaurant-management.test.mjs tests/phase6-housekeeping-and-maintenance.test.mjs tests/phase7-expenses-and-reports.test.mjs"
+    "test": "node --test tests/phase1-public-logic.test.mjs tests/phase2-database-and-rbac.test.mjs tests/phase3-inventory-and-reservations.test.mjs tests/phase4-payments-and-finance.test.mjs tests/phase5-restaurant-management.test.mjs tests/phase6-housekeeping-and-maintenance.test.mjs tests/phase7-expenses-and-reports.test.mjs tests/phase8-forms-and-supabase.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.21.1",
+    "@supabase/supabase-js": "^2.109.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.453.0",

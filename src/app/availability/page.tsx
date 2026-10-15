@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ROOM_CATEGORIES, HOTEL_INFO } from "@/lib/constants";
@@ -13,6 +13,8 @@ import {
   MessageCircle,
   ShieldCheck,
   ChevronRight,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function AvailabilityPage() {
@@ -22,7 +24,44 @@ export default function AvailabilityPage() {
   const [checkIn, setCheckIn] = useState(todayStr);
   const [checkOut, setCheckOut] = useState(tomorrowStr);
   const [guests, setGuests] = useState("2");
-  const [isSearched, setIsSearched] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [liveAvailability, setLiveAvailability] = useState<Record<string, number>>({});
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const fetchAvailability = async (ci: string, co: string, g: string) => {
+    if (ci >= co) {
+      setErrorMsg("Check-out date must be strictly after check-in date.");
+      return;
+    }
+    setErrorMsg("");
+    setLoading(true);
+
+    try {
+      const res = await fetch(`/api/availability?checkIn=${ci}&checkOut=${co}&adults=${g}`);
+      const data = await res.json();
+
+      if (res.ok && data.categories) {
+        const availMap: Record<string, number> = {};
+        for (const cat of data.categories) {
+          availMap[cat.categoryId] = cat.availableRooms;
+        }
+        setLiveAvailability(availMap);
+      }
+    } catch (err) {
+      console.error("Availability fetch failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAvailability(checkIn, checkOut, guests);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchAvailability(checkIn, checkOut, guests);
+  };
 
   // Compute stay duration
   const d1 = new Date(checkIn);
@@ -42,17 +81,14 @@ export default function AvailabilityPage() {
             Check Room Availability
           </h1>
           <p className="text-slate-600 text-sm max-w-xl mx-auto">
-            Select your stay dates to view available rooms across all 4 categories at Hotel Edesiea, Pali.
+            Select your stay dates to view verified live room availability across all 4 categories at Hotel Edesiea, Pali.
           </p>
         </div>
 
         {/* Filter bar */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-md max-w-4xl mx-auto">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-md max-w-4xl mx-auto space-y-3">
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setIsSearched(true);
-            }}
+            onSubmit={handleSearchSubmit}
             className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end"
           >
             <div>
@@ -66,7 +102,7 @@ export default function AvailabilityPage() {
                 min={todayStr}
                 value={checkIn}
                 onChange={(e) => setCheckIn(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27]"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
               />
             </div>
 
@@ -81,7 +117,7 @@ export default function AvailabilityPage() {
                 min={checkIn || todayStr}
                 value={checkOut}
                 onChange={(e) => setCheckOut(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27]"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
               />
             </div>
 
@@ -93,7 +129,7 @@ export default function AvailabilityPage() {
               <select
                 value={guests}
                 onChange={(e) => setGuests(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] bg-white"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] bg-white focus:outline-none"
               >
                 <option value="1">1 Adult (Solo)</option>
                 <option value="2">2 Adults (Couple)</option>
@@ -104,14 +140,21 @@ export default function AvailabilityPage() {
 
             <button
               type="submit"
-              className="py-3 px-4 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow transition-all flex items-center justify-center gap-2"
+              disabled={loading}
+              className="py-3 px-4 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <Search className="w-4 h-4 text-[#C59B27]" />
-              <span>Update Availability</span>
+              <Search className={`w-4 h-4 text-[#C59B27] ${loading ? "animate-spin" : ""}`} />
+              <span>{loading ? "Checking..." : "Update Availability"}</span>
             </button>
           </form>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+          {errorMsg && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              {errorMsg}
+            </div>
+          )}
+
+          <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
             <span>
               Stay Duration: <strong>{nights} Night(s)</strong> ({checkIn} to {checkOut})
             </span>
@@ -124,16 +167,24 @@ export default function AvailabilityPage() {
         {/* Results listing */}
         <div className="space-y-6">
           <h2 className="font-serif text-2xl font-bold text-slate-900 text-center sm:text-left">
-            Available Rooms for Selected Dates ({nights} Night{nights > 1 ? "s" : ""})
+            Live Room Availability for {nights} Night{nights > 1 ? "s" : ""} ({checkIn} &rarr; {checkOut})
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {ROOM_CATEGORIES.map((cat) => {
               const totalStayPrice = cat.pricePerNight * nights;
+              const availableCount =
+                liveAvailability[cat.id] !== undefined
+                  ? liveAvailability[cat.id]
+                  : cat.totalRooms;
+              const isAvailable = availableCount > 0;
+
               return (
                 <div
                   key={cat.id}
-                  className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col sm:flex-row"
+                  className={`bg-white rounded-2xl border overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col sm:flex-row ${
+                    isAvailable ? "border-slate-200" : "border-amber-200 opacity-90"
+                  }`}
                 >
                   <div className="sm:w-1/2 relative h-48 sm:h-auto min-h-[180px] bg-slate-100">
                     <Image
@@ -142,8 +193,16 @@ export default function AvailabilityPage() {
                       fill
                       className="object-cover"
                     />
-                    <div className="absolute top-3 left-3 bg-[#0E1A2B]/85 text-[#E5C158] text-[11px] font-bold px-2 py-0.5 rounded backdrop-blur-sm">
-                      {cat.totalRooms} Rooms in Inventory
+                    <div
+                      className={`absolute top-3 left-3 text-[11px] font-bold px-2 py-0.5 rounded backdrop-blur-sm ${
+                        isAvailable
+                          ? "bg-[#0E1A2B]/85 text-[#E5C158]"
+                          : "bg-red-900/85 text-red-200"
+                      }`}
+                    >
+                      {isAvailable
+                        ? `${availableCount} of ${cat.totalRooms} Rooms Available`
+                        : "Fully Booked for Dates"}
                     </div>
                   </div>
 
@@ -153,8 +212,14 @@ export default function AvailabilityPage() {
                         <h3 className="font-serif text-xl font-bold text-slate-900">
                           {cat.name}
                         </h3>
-                        <span className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded">
-                          Available
+                        <span
+                          className={`font-bold text-xs px-2 py-0.5 rounded ${
+                            isAvailable
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-red-50 text-red-700 border border-red-200"
+                          }`}
+                        >
+                          {isAvailable ? "Available" : "Sold Out"}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mt-1 line-clamp-2">
@@ -179,16 +244,30 @@ export default function AvailabilityPage() {
                         </p>
                       </div>
 
-                      <Link
-                        href={`/booking?checkIn=${encodeURIComponent(
-                          checkIn
-                        )}&checkOut=${encodeURIComponent(
-                          checkOut
-                        )}&guests=${guests}&category=${cat.id}`}
-                        className="px-4 py-2 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] font-bold text-xs rounded-lg shadow"
-                      >
-                        Book (₹500 Adv)
-                      </Link>
+                      {isAvailable ? (
+                        <Link
+                          href={`/booking?checkIn=${encodeURIComponent(
+                            checkIn
+                          )}&checkOut=${encodeURIComponent(
+                            checkOut
+                          )}&guests=${guests}&category=${cat.id}`}
+                          className="px-4 py-2 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] font-bold text-xs rounded-lg shadow"
+                        >
+                          Book (₹500 Adv)
+                        </Link>
+                      ) : (
+                        <a
+                          href={`https://wa.me/${HOTEL_INFO.whatsapp}?text=Namaskar%20Hotel%20Edesiea%2C%20inquiring%20about%20waitlist%20for%20${encodeURIComponent(
+                            cat.name
+                          )}%20from%20${checkIn}%20to%20${checkOut}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg shadow flex items-center gap-1"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Waitlist on WA</span>
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -11,21 +11,58 @@ import {
   Sparkles,
   Send,
   CheckCircle2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 export default function ContactPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [category, setCategory] = useState("GENERAL");
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [sent, setSent] = useState(false);
+  const [enquiryId, setEnquiryId] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSent(true);
+    setErrorMsg("");
+    setSubmitting(true);
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          phone,
+          email,
+          category,
+          message,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || "Failed to submit enquiry. Please call or message us on WhatsApp.");
+        setSubmitting(false);
+        return;
+      }
+
+      setEnquiryId(data.enquiryId || "");
+      setSent(true);
+    } catch (err: any) {
+      setErrorMsg("Network error. Please reach our Pali reception desk directly on WhatsApp.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const whatsappMsg = encodeURIComponent(
-    `Hello Hotel Edesiea! Query from ${name || "Guest"}:\n${message}`
+    `Hello Hotel Edesiea! Query regarding [${category}] from ${name || "Guest"}:\n${message}`
   );
 
   return (
@@ -147,25 +184,41 @@ export default function ContactPage() {
                   Message Sent to Hotel Edesiea
                 </h3>
                 <p className="text-sm text-slate-600 max-w-md mx-auto">
-                  Thank you, {name}. Our front desk at Pali has received your message and will respond promptly via call or WhatsApp.
+                  Thank you, <strong>{name}</strong>. Our front desk at Pali has recorded your enquiry (Ref: <code className="bg-slate-100 px-1 py-0.5 rounded text-xs font-mono">{enquiryId ? enquiryId.slice(0, 8) : "REC"}</code>) and will respond promptly via call or WhatsApp.
                 </p>
-                <div className="pt-2">
+                <div className="pt-2 flex flex-col sm:flex-row justify-center gap-3">
                   <a
                     href={`https://wa.me/${HOTEL_INFO.whatsapp}?text=${whatsappMsg}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-lg shadow"
+                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-lg shadow"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>Also Send on WhatsApp</span>
                   </a>
+                  <button
+                    onClick={() => {
+                      setSent(false);
+                      setMessage("");
+                    }}
+                    className="px-6 py-2.5 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg"
+                  >
+                    Send Another Message
+                  </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 <h3 className="font-serif text-2xl font-bold text-slate-900">
                   Send a Direct Message
                 </h3>
+
+                {errorMsg && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -178,7 +231,7 @@ export default function ContactPage() {
                       placeholder="e.g. Anand Joshi"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27]"
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
                     />
                   </div>
 
@@ -192,8 +245,40 @@ export default function ContactPage() {
                       placeholder="+91 88558 87673"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27]"
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Email Address (Optional)
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. anand@gmail.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Enquiry Category
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none bg-white"
+                    >
+                      <option value="GENERAL">General Stay Enquiry</option>
+                      <option value="ROOM_BOOKING">Room Availability & Rates</option>
+                      <option value="RESTAURANT_EVENT">Dining, Thali & Banquets</option>
+                      <option value="TEMPLE_VISIT">Ballaleshwar Temple Pilgrimage Assistance</option>
+                      <option value="COMPLAINT">Feedback or Service Issue</option>
+                    </select>
                   </div>
                 </div>
 
@@ -207,16 +292,26 @@ export default function ContactPage() {
                     placeholder="Specify stay dates, number of rooms needed, dining inquiry, or special pilgrimage arrangements..."
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27]"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-[#C59B27] focus:outline-none"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3.5 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow transition-all flex items-center justify-center gap-2"
+                  disabled={submitting}
+                  className="w-full py-3.5 bg-[#0E1A2B] hover:bg-[#1E2E44] text-[#E5C158] hover:text-white font-bold rounded-lg text-sm shadow transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  <Send className="w-4 h-4 text-[#C59B27]" />
-                  <span>Send Message to Pali Reception</span>
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-[#E5C158]" />
+                      <span>Sending to Pali Reception...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 text-[#C59B27]" />
+                      <span>Send Message to Pali Reception</span>
+                    </>
+                  )}
                 </button>
               </form>
             )}
